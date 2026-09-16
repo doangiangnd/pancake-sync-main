@@ -1,0 +1,16 @@
+services:
+  pancake-sync:
+    build: .
+    image: pancake-sync:latest
+    container_name: pancake-sync
+    restart: unless-stopped
+    ports:
+      # Chỉ bind localhost — reverse proxy (nginx) trên VPS forward vào đây.
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
+    volumes:
+      # Persist cache/log giữa các lần rebuild/restart.
+      - ./data:/app/data
+    # Production: chạy dist/main thay vì nest start.
+    command: ["npm", "run", "start:prod"]
