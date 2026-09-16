@@ -16,7 +16,7 @@ jobs:
           username: deploy_vcc
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
-            cd /srv/VCC/pancake-sync
+            cd /srv/VCC/pancake-sync/pancake-sync-main
             git pull origin main
             docker compose build
             docker compose up -d
