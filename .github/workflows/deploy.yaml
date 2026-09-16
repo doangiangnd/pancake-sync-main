@@ -21,8 +21,11 @@ jobs:
             cd /srv/VCC/pancake-sync/pancake-sync-main
             # Pull cùng nhánh trigger workflow (develop).
             git pull origin develop
-            # Cần file .env trên VPS (không commit vào git).
-            test -f .env
+            # .env không commit vào git — phải tạo sẵn trên VPS.
+            if [ ! -f .env ]; then
+              echo "ERROR: Missing .env at $(pwd)/.env — create it on VPS before deploy."
+              exit 1
+            fi
             docker compose build
             docker compose up -d
             docker image prune -f

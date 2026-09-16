@@ -5,8 +5,9 @@ services:
     container_name: pancake-sync
     restart: unless-stopped
     ports:
-      # Chỉ bind localhost — reverse proxy (nginx) trên VPS forward vào đây.
-      - "127.0.0.1:3000:3000"
+      # Host port lấy từ .env (HOST_PORT). Container vẫn listen 3000.
+      # Mặc định 3001 nếu 3000 đã bị chiếm trên VPS.
+      - "127.0.0.1:${HOST_PORT:-3001}:3001"
     env_file:
       - .env
     volumes:
