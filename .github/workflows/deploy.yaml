@@ -1,3 +1,4 @@
+# Trigger deploy pancake-sync to develop branch.
 name: Deploy pancake-sync
 
 on:
