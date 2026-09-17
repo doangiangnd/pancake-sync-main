@@ -25,6 +25,8 @@ describe('WebhookService pending referral delivery', () => {
 
   it('stores a captured ref in every configured Laravel CRM', async () => {
     const service = new WebhookService();
+    jest.spyOn(service as any, 'loadLocalPendingRefs').mockReturnValue({});
+    jest.spyOn(service as any, 'saveLocalPendingRefs').mockImplementation();
 
     await service.setPendingRef('331141913426390_customer-1', {
       ref: 'xxxxx',
@@ -56,12 +58,73 @@ describe('WebhookService pending referral delivery', () => {
 
   it('keeps the ref available after Pancake CRM succeeds', async () => {
     const service = new WebhookService();
+    jest.spyOn(service, 'setPendingRef').mockResolvedValue(undefined);
     jest.spyOn(service, 'syncRefToPancake').mockResolvedValue(true);
     const removeSpy = jest.spyOn(service, 'removePendingRef');
 
     await service.handleRefCapture('331141913426390', 'customer-1', 'xxxxx');
 
     expect(removeSpy).not.toHaveBeenCalled();
+  });
+
+  it('uses the local pending ref when Laravel is unavailable', async () => {
+    const service = new WebhookService();
+    jest.spyOn(service as any, 'loadLocalPendingRefs').mockReturnValue({
+      page_customer: { ref: 'local-ref' },
+    });
+
+    await expect(service.getPendingRef('page_customer')).resolves.toEqual({
+      ref: 'local-ref',
+    });
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+  });
+
+  it('captures a ref included in a Pancake messaging webhook', async () => {
+    const service = new WebhookService();
+    jest.spyOn(service, 'logLine').mockImplementation();
+    const capture = jest
+      .spyOn(service, 'handleRefCapture')
+      .mockResolvedValue(undefined);
+
+    await service.processPancakeMessagingReferral({
+      event_type: 'messaging',
+      page_id: 'page-1',
+      data: {
+        conversation: { id: 'page-1_customer-1' },
+        message: {
+          from: { id: 'customer-1' },
+          referral: { ref: 'messenger-campaign' },
+        },
+      },
+    });
+
+    expect(capture).toHaveBeenCalledWith(
+      'page-1',
+      'customer-1',
+      'messenger-campaign',
+    );
+  });
+
+  it('does not write the same ref back to Pancake repeatedly', async () => {
+    const service = new WebhookService();
+    jest.spyOn(service, 'setLeadIndex').mockImplementation();
+    jest.spyOn(service, 'loadPendingRefs').mockResolvedValue({
+      page_customer: { ref: 'same-ref' },
+    });
+    const sync = jest
+      .spyOn(service, 'syncRefToPancake')
+      .mockResolvedValue(true);
+    jest.spyOn(service, 'logLine').mockImplementation();
+
+    await (service as any).applyPendingRefToPancakeRecord({
+      id: 'record-1',
+      workspace_id: 607,
+      table_id: 'lead',
+      conversation_id: 'page_customer',
+      ref: 'same-ref',
+    });
+
+    expect(sync).not.toHaveBeenCalled();
   });
 
   it('renders captured Messenger refs as the primary dashboard status', () => {

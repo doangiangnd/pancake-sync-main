@@ -35,6 +35,19 @@ export class WebhookService {
     return getLaravelTargets().filter((target) => target.apiBaseUrl);
   }
 
+  private pendingRefsPath() {
+    return path.join(this.baseDataPath, 'pending_refs.json');
+  }
+
+  private loadLocalPendingRefs(): Record<string, any> {
+    const data = this.readJsonFile(this.pendingRefsPath());
+    return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+  }
+
+  private saveLocalPendingRefs(data: Record<string, any>) {
+    this.writeJsonFile(this.pendingRefsPath(), data);
+  }
+
   private pendingRefsApiBase(target: LaravelTargetConfig) {
     return `${target.apiBaseUrl}/internal/pancake/pending-refs`;
   }
@@ -44,6 +57,14 @@ export class WebhookService {
       'X-Webhook-Secret': target.webhookSecret,
       Accept: 'application/json',
     };
+  }
+
+  private safeTargetUrl(target: LaravelTargetConfig): string {
+    try {
+      return new URL(target.apiBaseUrl).hostname;
+    } catch {
+      return '(invalid URL)';
+    }
   }
 
   private leadIndexPath() {
@@ -215,13 +236,12 @@ export class WebhookService {
   }
 
   /**
-   * Pending refs now live in Laravel's DB (not a local file) — NestJS runs
-   * on Render free tier with no persistent disk, so a local JSON file gets
-   * wiped on every container restart/sleep cycle, silently losing in-flight
-   * referral captures.
+   * Keep a local durable copy on the VPS volume and merge Laravel copies when
+   * available. Referral delivery must continue while a CRM or its TLS
+   * certificate is temporarily unavailable.
    */
   async loadPendingRefs(): Promise<Record<string, any>> {
-    const merged: Record<string, any> = {};
+    const merged: Record<string, any> = this.loadLocalPendingRefs();
 
     await Promise.all(
       this.pendingRefTargets().map(async (target) => {
@@ -234,7 +254,11 @@ export class WebhookService {
         } catch (error: any) {
           this.logLine(
             'Failed to load pending refs from Laravel',
-            { target: target.name, message: error.message },
+            {
+              target: target.name,
+              host: this.safeTargetUrl(target),
+              message: error.message,
+            },
             'ERROR',
           );
         }
@@ -277,6 +301,15 @@ export class WebhookService {
   }
 
   async setPendingRef(conversationId: string, payload: any) {
+    const local = this.loadLocalPendingRefs();
+    local[conversationId] = {
+      ref: String(payload.ref || ''),
+      page_id: String(payload.page_id || ''),
+      sender_id: String(payload.sender_id || ''),
+      captured_at: payload.captured_at || new Date().toISOString(),
+    };
+    this.saveLocalPendingRefs(local);
+
     this.warnIfNoPendingRefTargets();
     await Promise.all(
       this.pendingRefTargets().map(async (target) => {
@@ -300,6 +333,7 @@ export class WebhookService {
             'Failed to save pending ref to Laravel',
             {
               target: target.name,
+              host: this.safeTargetUrl(target),
               conversation_id: conversationId,
               message: error.message,
             },
@@ -311,6 +345,9 @@ export class WebhookService {
   }
 
   async getPendingRef(conversationId: string): Promise<any | null> {
+    const local = this.loadLocalPendingRefs()[conversationId];
+    if (local?.ref) return local;
+
     this.warnIfNoPendingRefTargets();
     const results = await Promise.all(
       this.pendingRefTargets().map(async (target) => {
@@ -329,6 +366,7 @@ export class WebhookService {
               'Failed to get pending ref from Laravel',
               {
                 target: target.name,
+                host: this.safeTargetUrl(target),
                 conversation_id: conversationId,
                 message: error.message,
               },
@@ -344,6 +382,12 @@ export class WebhookService {
   }
 
   async removePendingRef(conversationId: string) {
+    const local = this.loadLocalPendingRefs();
+    if (local[conversationId]) {
+      delete local[conversationId];
+      this.saveLocalPendingRefs(local);
+    }
+
     await Promise.all(
       this.pendingRefTargets().map(async (target) => {
         try {
@@ -359,6 +403,7 @@ export class WebhookService {
             'Failed to remove pending ref from Laravel',
             {
               target: target.name,
+              host: this.safeTargetUrl(target),
               conversation_id: conversationId,
               message: error.message,
             },
@@ -443,6 +488,69 @@ export class WebhookService {
       this.extractRefFromPayload(event?.optin?.payload) ||
       null
     );
+  }
+
+  extractPancakeMessagingRef(payload: any): string | null {
+    const data = payload?.data || {};
+    const conversation = data?.conversation || {};
+    const message = data?.message || {};
+
+    return this.firstStringValue([
+      payload?.ref,
+      payload?.referral_ref,
+      payload?.utm_ref,
+      data?.ref,
+      data?.referral_ref,
+      data?.referral?.ref,
+      conversation?.ref,
+      conversation?.referral_ref,
+      conversation?.referral?.ref,
+      conversation?.source?.ref,
+      message?.ref,
+      message?.referral_ref,
+      message?.referral?.ref,
+      message?.postback?.referral?.ref,
+      this.extractRefFromUrl(conversation?.source_url),
+      this.extractRefFromUrl(conversation?.referral_url),
+      this.extractRefFromUrl(message?.source_url),
+    ]);
+  }
+
+  async processPancakeMessagingReferral(payload: any) {
+    const data = payload?.data || {};
+    const conversation = data?.conversation || {};
+    const message = data?.message || {};
+    const pageId = this.firstStringValue([
+      payload?.page_id,
+      conversation?.page_id,
+      message?.page_id,
+    ]);
+    const senderId = this.firstStringValue([
+      message?.from?.id,
+      conversation?.from?.id,
+      data?.sender_id,
+      message?.sender_id,
+      conversation?.customer_id,
+    ]);
+    const ref = this.extractPancakeMessagingRef(payload);
+
+    this.logLine('Pancake messaging webhook received', {
+      page_id: pageId,
+      sender_id: senderId,
+      conversation_id:
+        conversation?.conversation_id || conversation?.id || null,
+      has_ref: !!ref,
+      ref: ref || null,
+    });
+
+    if (!ref || !pageId || !senderId) return;
+
+    this.logLine('Pancake messaging ref captured', {
+      conversation_id: this.buildConversationId(pageId, senderId),
+      event_type: 'messaging',
+      ref,
+    });
+    await this.handleRefCapture(pageId, senderId, ref);
   }
 
   private firstStringValue(values: any[]): string | null {
@@ -595,8 +703,10 @@ export class WebhookService {
     conversationId: string;
     ref: string;
   } | null> {
+    const pendingRefs = await this.loadPendingRefs();
+
     for (const conversationId of this.getPancakeConversationIds(record)) {
-      const pending = await this.getPendingRef(conversationId);
+      const pending = pendingRefs[conversationId];
 
       if (pending?.ref) {
         return {
@@ -900,7 +1010,16 @@ export class WebhookService {
       this.logLine(
         'Pancake CRM sync disabled, skipping',
         { conversation_id: conversationId },
-        'DEBUG',
+        'IMPORTANT',
+      );
+      return false;
+    }
+
+    if (!(process.env.PANCAKE_API_KEY || '').trim()) {
+      this.logLine(
+        'Pancake CRM sync cannot run because PANCAKE_API_KEY is empty',
+        { conversation_id: conversationId },
+        'ERROR',
       );
       return false;
     }
@@ -1033,9 +1152,20 @@ export class WebhookService {
     const tableId = String(record.table_id || '');
     const recordId = String(record.id || '');
 
-    if (workspaceId !== Number(process.env.PANCAKE_WORKSPACE || 607)) return;
-    if (tableId !== String(process.env.PANCAKE_TABLE || 'lead')) return;
-    if (!recordId) return;
+    if (
+      workspaceId !== Number(process.env.PANCAKE_WORKSPACE || 607) ||
+      tableId !== String(process.env.PANCAKE_TABLE || 'lead') ||
+      !recordId
+    ) {
+      this.logLine('Pancake record ignored because target does not match', {
+        record_id: recordId || null,
+        workspace_id: workspaceId || null,
+        expected_workspace_id: Number(process.env.PANCAKE_WORKSPACE || 607),
+        table_id: tableId || null,
+        expected_table_id: String(process.env.PANCAKE_TABLE || 'lead'),
+      });
+      return;
+    }
 
     const conversationIds = this.getPancakeConversationIds(record);
     if (conversationIds.length === 0) return;
@@ -1066,6 +1196,17 @@ export class WebhookService {
           reference_source: record.reference_source || null,
         });
       }
+      return;
+    }
+
+    const existingRef = this.extractPancakeRef(record);
+    if (existingRef === pending.ref) {
+      this.logLine('Pancake record already has captured ref', {
+        conversation_id: pending.conversationId,
+        record_id: recordId,
+        ref: pending.ref,
+      });
+      this.clearPendingRefRetries(pending.conversationId);
       return;
     }
 
@@ -1303,7 +1444,10 @@ export class WebhookService {
       let categoryLabel = 'Hệ thống';
       let displayMessage = message;
 
-      if (message === 'Meta ref captured') {
+      if (
+        message === 'Meta ref captured' ||
+        message === 'Pancake messaging ref captured'
+      ) {
         category = 'captured';
         categoryLabel = 'Đã lấy ref';
         displayMessage = 'Đã nhận ref từ khách hàng Messenger';

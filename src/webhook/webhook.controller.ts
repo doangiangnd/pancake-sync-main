@@ -101,6 +101,15 @@ export class WebhookController {
         }
 
         res.status(200).json({ success: true, message: 'EVENT_RECEIVED' });
+        void this.service
+          .processPancakeMessagingReferral(data)
+          .catch((error: any) => {
+            this.service.logLine(
+              'Pancake messaging ref processing failed',
+              { message: error?.message || String(error) },
+              'ERROR',
+            );
+          });
         void processPancakeMessagingWebhook(
           {
             pageId,

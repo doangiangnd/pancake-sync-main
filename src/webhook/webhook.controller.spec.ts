@@ -91,7 +91,10 @@ describe('WebhookController legacy Pancake messaging compatibility', () => {
     delete process.env.STORE_MESSAGE_CACHE;
     jest.spyOn(Logger.prototype, 'log').mockImplementation();
 
-    const service: any = { logLine: jest.fn() };
+    const service: any = {
+      logLine: jest.fn(),
+      processPancakeMessagingReferral: jest.fn().mockResolvedValue(undefined),
+    };
     const forwardService: any = {
       forwardToLaravel: jest.fn().mockResolvedValue(true),
     };
@@ -131,7 +134,10 @@ describe('WebhookController legacy Pancake messaging compatibility', () => {
   });
 
   it('does not emit when either Laravel save fails', async () => {
-    const service: any = { logLine: jest.fn() };
+    const service: any = {
+      logLine: jest.fn(),
+      processPancakeMessagingReferral: jest.fn().mockResolvedValue(undefined),
+    };
     const forwardService: any = {
       forwardToLaravel: jest
         .fn()

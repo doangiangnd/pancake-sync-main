@@ -7,11 +7,15 @@ services:
     ports:
       # Host port lấy từ .env (HOST_PORT). Container vẫn listen 3000.
       # Mặc định 3001 nếu 3000 đã bị chiếm trên VPS.
-      - "127.0.0.1:${HOST_PORT:-3001}:3001"
+      - '127.0.0.1:${HOST_PORT:-3001}:3001'
     env_file:
       - .env
+    environment:
+      # Hệ thống này vẫn cần ghi custom field ref vào Pancake CRM. Có thể đặt
+      # false rõ ràng trong .env nếu muốn ngừng luồng đồng bộ này.
+      PANCAKE_CRM_SYNC_ENABLED: '${PANCAKE_CRM_SYNC_ENABLED:-true}'
     volumes:
       # Persist cache/log giữa các lần rebuild/restart.
       - ./data:/app/data
     # Production: chạy dist/main thay vì nest start.
-    command: ["npm", "run", "start:prod"]
+    command: ['npm', 'run', 'start:prod']
