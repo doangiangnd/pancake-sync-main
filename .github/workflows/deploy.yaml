@@ -4,6 +4,7 @@ name: Deploy pancake-sync
 on:
   push:
     branches: [develop]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -11,10 +12,14 @@ jobs:
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.0
+        env:
+          META_VERIFY_TOKEN: ${{ secrets.META_VERIFY_TOKEN }}
+          META_APP_SECRET: ${{ secrets.META_APP_SECRET }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: deploy_vcc
           key: ${{ secrets.VPS_SSH_KEY }}
+          envs: META_VERIFY_TOKEN,META_APP_SECRET
           # Dừng ngay nếu một lệnh trong script fail (tránh báo success giả).
           script_stop: true
           script: |
@@ -38,6 +43,25 @@ jobs:
               echo "ERROR: Missing .env at $(pwd)/.env — create it on VPS before deploy."
               exit 1
             fi
+
+            # Đồng bộ secret Meta từ GitHub Actions xuống .env mà không commit
+            # secret vào repository. Bỏ qua biến chưa được cấu hình trên GitHub.
+            if [ -n "${META_VERIFY_TOKEN}" ]; then
+              if grep -q '^META_VERIFY_TOKEN=' .env; then
+                sed -i "s|^META_VERIFY_TOKEN=.*|META_VERIFY_TOKEN=${META_VERIFY_TOKEN}|" .env
+              else
+                printf '\nMETA_VERIFY_TOKEN=%s\n' "${META_VERIFY_TOKEN}" >> .env
+              fi
+            fi
+
+            if [ -n "${META_APP_SECRET}" ]; then
+              if grep -q '^META_APP_SECRET=' .env; then
+                sed -i "s|^META_APP_SECRET=.*|META_APP_SECRET=${META_APP_SECRET}|" .env
+              else
+                printf 'META_APP_SECRET=%s\n' "${META_APP_SECRET}" >> .env
+              fi
+            fi
+
             docker compose build
             docker compose up -d
             docker image prune -f
