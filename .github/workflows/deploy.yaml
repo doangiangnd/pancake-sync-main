@@ -19,6 +19,20 @@ jobs:
           script_stop: true
           script: |
             cd /srv/VCC/pancake-sync/pancake-sync-main
+
+            # Một số lần vận hành cũ tạo file Git bằng root, khiến deploy_vcc
+            # không thể ghi vào .git/objects. User deploy đã có quyền Docker,
+            # nên dùng container tạm để trả ownership mà không cần SSH/sudo.
+            if [ ! -w .git/objects ]; then
+              DEPLOY_UID="$(id -u)"
+              DEPLOY_GID="$(id -g)"
+              echo "Repairing repository ownership for ${DEPLOY_UID}:${DEPLOY_GID}..."
+              docker run --rm \
+                -v "$(pwd):/workspace" \
+                alpine:3.20 \
+                chown -R "${DEPLOY_UID}:${DEPLOY_GID}" /workspace
+            fi
+
             # Pull cùng nhánh trigger workflow (develop).
             git pull origin develop
             # .env không commit vào git — phải tạo sẵn trên VPS.
