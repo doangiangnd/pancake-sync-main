@@ -63,5 +63,6 @@ jobs:
             fi
 
             docker compose build
-            docker compose up -d
+            # Recreate để mọi thay đổi trong env_file được nạp vào container.
+            docker compose up -d --force-recreate
             docker image prune -f
