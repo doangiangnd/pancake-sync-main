@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Messenger Ref Monitor</title>
+    <style>
+      {{css}}
+    </style>
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path
+                d="M12 2C6.48 2 2 6.15 2 11.27c0 2.92 1.46 5.52 3.74 7.22V22l3.42-1.88c.9.25 1.86.39 2.84.39 5.52 0 10-4.15 10-9.24S17.52 2 12 2Zm1 12.46-2.55-2.72-4.98 2.72 5.48-5.82 2.61 2.72 4.92-2.72L13 14.46Z"
+              />
+            </svg>
+          </div>
+          <div>
+            <div class="eyebrow">FACEBOOK MESSENGER</div>
+            <h1>Ref Monitor</h1>
+          </div>
+        </div>
+        <div class="live-state"><i></i><span>Đang theo dõi</span></div>
+      </header>
+
+      <section class="capture-status {{captureStatusClass}}">
+        <div class="status-icon">
+          <svg viewBox="0 0 24 24"><path d="m7.5 12.5 3 3 6-7" /></svg>
+        </div>
+        <div class="status-copy">
+          <span>TRẠNG THÁI THU REF</span>
+          <h2>{{captureStatusTitle}}</h2>
+          <p>{{captureStatusText}}</p>
+        </div>
+        <div class="status-pulse"><span></span></div>
+      </section>
+
+      <section class="stats" aria-label="Thống kê log">
+        <article class="stat-card stat-primary">
+          <span class="stat-label">Lần bắt được ref</span
+          ><strong>{{capturedCount}}</strong
+          ><small>{{uniqueRefCount}} ref khác nhau</small>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Đã đồng bộ</span
+          ><strong>{{syncedCount}}</strong><small>Trong log đang xem</small>
+        </article>
+        <article class="stat-card">
+          <span class="stat-label">Chờ xử lý</span
+          ><strong>{{pendingCount}}</strong><small>Cần hệ thống thử lại</small>
+        </article>
+        <article class="stat-card stat-error">
+          <span class="stat-label">Lỗi</span><strong>{{errorCount}}</strong
+          ><small>Cần kiểm tra</small>
+        </article>
+      </section>
+
+      <section class="log-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">NHẬT KÝ HOẠT ĐỘNG</span>
+            <h2>Luồng sự kiện gần đây</h2>
+            <p>
+              <span id="visible-count">{{lineCount}}</span> / {{lineCount}} sự
+              kiện đang hiển thị
+            </p>
+          </div>
+          <div class="refresh-control">
+            <button
+              class="icon-button"
+              id="refresh-button"
+              type="button"
+              title="Tải lại ngay"
+            >
+              <svg viewBox="0 0 24 24">
+                <path d="M20 11a8 8 0 1 0-2.34 5.66M20 4v7h-7" />
+              </svg>
+            </button>
+            <div>
+              <span>Tự cập nhật</span
+              ><strong><b id="countdown">15</b> giây</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="toolbar">
+          <label class="search-box">
+            <svg viewBox="0 0 24 24">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-4-4" />
+            </svg>
+            <input
+              id="log-search"
+              type="search"
+              placeholder="Tìm ref, conversation ID, nội dung..."
+              autocomplete="off"
+            />
+          </label>
+          <div class="filters" role="group" aria-label="Lọc log">
+            <button class="filter active" data-filter="all" type="button">
+              Tất cả
+            </button>
+            <button class="filter" data-filter="captured" type="button">
+              Đã lấy ref
+            </button>
+            <button class="filter" data-filter="pending" type="button">
+              Chờ xử lý
+            </button>
+            <button class="filter" data-filter="error" type="button">
+              Lỗi
+            </button>
+          </div>
+          <label class="line-select"
+            ><span>Số dòng</span
+            ><select id="line-count">
+              <option value="100">100</option>
+              <option value="200">200</option>
+              <option value="500">500</option>
+              <option value="1000">1.000</option>
+            </select></label
+          >
+        </div>
+
+        <div class="timeline" id="log-list">{{logRows}}</div>
+        <div class="no-results" id="no-results" hidden>
+          <strong>Không tìm thấy sự kiện phù hợp</strong
+          ><span>Thử từ khóa hoặc bộ lọc khác.</span>
+        </div>
+      </section>
+      <footer>
+        <span>Hiển thị {{requestedLines}} dòng log gần nhất</span
+        ><span>Trang tự tải lại để nhận dữ liệu mới</span>
+      </footer>
+    </main>
+    <script>
+      window.LOG_VIEWER_LINES = {{requestedLines}}; {{script}}
+    </script>
+  </body>
+</html>

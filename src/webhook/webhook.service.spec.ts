@@ -63,4 +63,22 @@ describe('WebhookService pending referral delivery', () => {
 
     expect(removeSpy).not.toHaveBeenCalled();
   });
+
+  it('renders captured Messenger refs as the primary dashboard status', () => {
+    const service = new WebhookService();
+    jest
+      .spyOn(service, 'getLogTail')
+      .mockReturnValue([
+        '[2026-09-17 08:30:00][IMPORTANT] Meta ref captured {"conversation_id":"page_customer","event_type":"referral","ref":"fb-ad-123"}',
+        '[2026-09-17 08:30:01][ERROR] Example failure {"message":"timeout"}',
+      ]);
+
+    const html = service.renderLogViewer(200);
+
+    expect(html).toContain('Đã lấy được ref từ Messenger');
+    expect(html).toContain('fb-ad-123');
+    expect(html).toContain('page_customer');
+    expect(html).toContain('data-category="captured"');
+    expect(html).toContain('data-category="error"');
+  });
 });

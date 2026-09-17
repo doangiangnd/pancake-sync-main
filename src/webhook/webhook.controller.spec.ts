@@ -37,6 +37,27 @@ describe('WebhookController legacy Pancake messaging compatibility', () => {
     jest.restoreAllMocks();
   });
 
+  it('renders webhook logs on the dedicated web route', () => {
+    const service: any = {
+      renderLogViewer: jest.fn().mockReturnValue('<html>logs</html>'),
+    };
+    const controller = new WebhookController(
+      service,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+    const res = response();
+
+    controller.showLogs('300', res);
+
+    expect(service.renderLogViewer).toHaveBeenCalledWith(300);
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.type).toHaveBeenCalledWith('text/html; charset=utf-8');
+    expect(res.send).toHaveBeenCalledWith('<html>logs</html>');
+  });
+
   it('saves through Laravel and emits realtime when messaging arrives on /api/webhook', async () => {
     delete process.env.PANCAKE_MESSAGING_WEBHOOK_ENABLED;
     delete process.env.FORWARD_MESSAGING_EVENTS;

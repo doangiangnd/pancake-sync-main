@@ -1236,6 +1236,150 @@ export class WebhookService {
     }
   }
 
+  renderLogViewer(requestedLines?: number): string {
+    const lines = Number.isFinite(requestedLines)
+      ? Math.min(Math.max(Math.trunc(requestedLines!), 1), 1000)
+      : 200;
+    const logs = this.getLogTail(lines);
+
+    const entries = logs.map((line) => {
+      const match = line.match(
+        /^\[([^\]]+)]\[([^\]]+)]\s+([^\{]*?)(?:\s+(\{.*\}))?$/,
+      );
+      const timestamp = match?.[1] || '';
+      const level = match?.[2] || 'IMPORTANT';
+      const message = (match?.[3] || line).trim();
+      let context: Record<string, any> = {};
+
+      if (match?.[4]) {
+        try {
+          context = JSON.parse(match[4]);
+        } catch {
+          context = {};
+        }
+      }
+
+      let category = 'system';
+      let categoryLabel = 'Hệ thống';
+      let displayMessage = message;
+
+      if (message === 'Meta ref captured') {
+        category = 'captured';
+        categoryLabel = 'Đã lấy ref';
+        displayMessage = 'Đã nhận ref từ khách hàng Messenger';
+      } else if (message === 'Ref synced') {
+        category = 'synced';
+        categoryLabel = 'Đã đồng bộ';
+        displayMessage = 'Ref đã được đồng bộ vào Pancake CRM';
+      } else if (
+        level === 'ERROR' ||
+        message.toLowerCase().includes('failed')
+      ) {
+        category = 'error';
+        categoryLabel = 'Có lỗi';
+      } else if (
+        message.includes('retry') ||
+        message.includes('not found') ||
+        message.includes('Cannot sync')
+      ) {
+        category = 'pending';
+        categoryLabel = 'Chờ xử lý';
+      }
+
+      return {
+        raw: line,
+        timestamp,
+        displayMessage,
+        context,
+        category,
+        categoryLabel,
+      };
+    });
+
+    const capturedEntries = entries.filter(
+      (entry) => entry.category === 'captured',
+    );
+    const syncedCount = entries.filter(
+      (entry) => entry.category === 'synced',
+    ).length;
+    const pendingCount = entries.filter(
+      (entry) => entry.category === 'pending',
+    ).length;
+    const errorCount = entries.filter(
+      (entry) => entry.category === 'error',
+    ).length;
+    const latestCapture = capturedEntries.at(-1);
+    const uniqueRefs = new Set(
+      capturedEntries
+        .map((entry) => String(entry.context.ref || ''))
+        .filter(Boolean),
+    ).size;
+    const logRows =
+      entries
+        .reverse()
+        .map((entry) => {
+          const ref = String(entry.context.ref || '');
+          const conversationId = String(entry.context.conversation_id || '');
+          const eventType = String(entry.context.event_type || '');
+          const searchText = [
+            entry.raw,
+            entry.displayMessage,
+            ref,
+            conversationId,
+            eventType,
+          ].join(' ');
+          const details = [
+            ref
+              ? `<span class="detail detail-ref"><span>REF</span><strong>${this.escapeHtml(ref)}</strong></span>`
+              : '',
+            conversationId
+              ? `<span class="detail"><span>HỘI THOẠI</span><strong>${this.escapeHtml(conversationId)}</strong></span>`
+              : '',
+            eventType
+              ? `<span class="detail"><span>SỰ KIỆN</span><strong>${this.escapeHtml(eventType)}</strong></span>`
+              : '',
+          ]
+            .filter(Boolean)
+            .join('');
+
+          return `<article class="log-entry log-${entry.category}" data-category="${entry.category}" data-search="${this.escapeHtml(searchText.toLowerCase())}">
+            <div class="timeline-marker"><span></span></div>
+            <div class="log-card">
+              <div class="log-card-head">
+                <span class="badge badge-${entry.category}">${entry.categoryLabel}</span>
+                <time>${this.escapeHtml(entry.timestamp || 'Không rõ thời gian')}</time>
+              </div>
+              <h3>${this.escapeHtml(entry.displayMessage)}</h3>
+              ${details ? `<div class="details">${details}</div>` : ''}
+              <details><summary>Xem log gốc</summary><code>${this.escapeHtml(entry.raw)}</code></details>
+            </div>
+          </article>`;
+        })
+        .join('') ||
+      '<div class="empty-state"><strong>Chưa có log webhook</strong><span>Log mới sẽ xuất hiện tại đây khi hệ thống nhận sự kiện.</span></div>';
+
+    return this.renderTemplate(this.readViewFile('webhook-logs.html'), {
+      css: this.readViewFile('webhook-logs.css'),
+      script: this.readViewFile('webhook-logs.js'),
+      lineCount: String(logs.length),
+      requestedLines: String(lines),
+      capturedCount: String(capturedEntries.length),
+      uniqueRefCount: String(uniqueRefs),
+      syncedCount: String(syncedCount),
+      pendingCount: String(pendingCount),
+      errorCount: String(errorCount),
+      captureStatusClass: capturedEntries.length > 0 ? 'success' : 'waiting',
+      captureStatusTitle:
+        capturedEntries.length > 0
+          ? 'Đã lấy được ref từ Messenger'
+          : 'Chưa thấy ref trong phạm vi log đang xem',
+      captureStatusText: latestCapture
+        ? `Ref gần nhất: <strong>${this.escapeHtml(latestCapture.context.ref || '')}</strong> · ${this.escapeHtml(latestCapture.timestamp)}`
+        : `Đang kiểm tra ${lines} dòng log gần nhất.`,
+      logRows,
+    });
+  }
+
   private escapeHtml(value: any): string {
     return String(value ?? '')
       .replace(/&/g, '&amp;')

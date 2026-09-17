@@ -45,6 +45,12 @@ export class WebhookController {
     return res.status(403).type('text/plain').send('Forbidden');
   }
 
+  @Get('logs')
+  showLogs(@Query('lines') lines: string | undefined, @Res() res: Response) {
+    const html = this.service.renderLogViewer(Number(lines));
+    return res.status(200).type('text/html; charset=utf-8').send(html);
+  }
+
   @Post()
   async handlePost(
     @Req() req: Request & { rawBody?: string },
