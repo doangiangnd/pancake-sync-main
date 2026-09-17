@@ -51,6 +51,12 @@ export class WebhookController {
     return res.status(200).type('text/html; charset=utf-8').send(html);
   }
 
+  @Get('logs/stream')
+  streamLogs(@Res() res: Response) {
+    const clientId = this.service.addLogStreamClient(res);
+    res.on('close', () => this.service.removeLogStreamClient(clientId));
+  }
+
   @Post()
   async handlePost(
     @Req() req: Request & { rawBody?: string },

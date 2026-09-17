@@ -123,6 +123,16 @@ h1 {
   box-shadow: 0 0 0 5px rgba(49, 215, 160, 0.1);
   animation: live 2s infinite;
 }
+.live-state.offline {
+  border-color: #55462c;
+  background: rgba(55, 40, 17, 0.7);
+  color: #f2c46d;
+}
+.live-state.offline i {
+  background: #e9ae44;
+  box-shadow: none;
+  animation: none;
+}
 @keyframes live {
   50% {
     box-shadow: 0 0 0 8px rgba(49, 215, 160, 0);

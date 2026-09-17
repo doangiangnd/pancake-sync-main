@@ -58,6 +58,32 @@ describe('WebhookController legacy Pancake messaging compatibility', () => {
     expect(res.send).toHaveBeenCalledWith('<html>logs</html>');
   });
 
+  it('opens and cleans up the realtime log stream', () => {
+    let closeHandler: (() => void) | undefined;
+    const service: any = {
+      addLogStreamClient: jest.fn().mockReturnValue(17),
+      removeLogStreamClient: jest.fn(),
+    };
+    const controller = new WebhookController(
+      service,
+      {} as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+    const res: any = {
+      on: jest.fn((event: string, handler: () => void) => {
+        if (event === 'close') closeHandler = handler;
+      }),
+    };
+
+    controller.streamLogs(res);
+    closeHandler?.();
+
+    expect(service.addLogStreamClient).toHaveBeenCalledWith(res);
+    expect(service.removeLogStreamClient).toHaveBeenCalledWith(17);
+  });
+
   it('saves through Laravel and emits realtime when messaging arrives on /api/webhook', async () => {
     delete process.env.PANCAKE_MESSAGING_WEBHOOK_ENABLED;
     delete process.env.FORWARD_MESSAGING_EVENTS;

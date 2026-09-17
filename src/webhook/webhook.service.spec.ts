@@ -81,4 +81,25 @@ describe('WebhookService pending referral delivery', () => {
     expect(html).toContain('data-category="captured"');
     expect(html).toContain('data-category="error"');
   });
+
+  it('streams new log lines to connected web clients', () => {
+    const service = new WebhookService();
+    const response: any = {
+      setHeader: jest.fn(),
+      flushHeaders: jest.fn(),
+      write: jest.fn(),
+    };
+
+    const clientId = service.addLogStreamClient(response);
+    (service as any).broadcastLogLine('Meta ref captured');
+    service.removeLogStreamClient(clientId);
+
+    expect(response.setHeader).toHaveBeenCalledWith(
+      'Content-Type',
+      'text/event-stream; charset=utf-8',
+    );
+    expect(response.write).toHaveBeenCalledWith(
+      expect.stringContaining('event: log'),
+    );
+  });
 });

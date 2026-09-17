@@ -26,7 +26,9 @@
             <h1>Ref Monitor</h1>
           </div>
         </div>
-        <div class="live-state"><i></i><span>Đang theo dõi</span></div>
+        <div class="live-state" id="live-state">
+          <i></i><span>Đang kết nối</span>
+        </div>
       </header>
 
       <section class="capture-status {{captureStatusClass}}">
@@ -83,8 +85,8 @@
               </svg>
             </button>
             <div>
-              <span>Tự cập nhật</span
-              ><strong><b id="countdown">15</b> giây</strong>
+              <span>Kết nối realtime</span
+              ><strong id="stream-status">Đang kết nối...</strong>
             </div>
           </div>
         </div>

@@ -3,6 +3,7 @@ import axios from 'axios';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { Response } from 'express';
 import {
   getLaravelTargets,
   isPancakeCrmSyncEnabled,
@@ -20,6 +21,11 @@ export class WebhookService {
   private readonly logKeepLastLines = 300;
   private readonly pendingRetryTimers = new Map<string, NodeJS.Timeout[]>();
   private readonly pendingRetryDelays = [3000, 10000, 30000, 60000];
+  private readonly logStreamClients = new Map<
+    number,
+    { response: Response; heartbeat: NodeJS.Timeout }
+  >();
+  private nextLogStreamClientId = 1;
 
   private logFilePath() {
     return path.join(this.baseDataPath, 'messenger_webhook.log');
@@ -104,15 +110,49 @@ export class WebhookService {
         ? ` ${JSON.stringify(context)}`
         : '';
 
-    fs.appendFileSync(
-      this.logFilePath(),
-      `[${timestamp}][${level}] ${message}${safeContext}\n`,
-      'utf8',
-    );
+    const line = `[${timestamp}][${level}] ${message}${safeContext}`;
+    fs.appendFileSync(this.logFilePath(), `${line}\n`, 'utf8');
+    this.broadcastLogLine(line);
 
     // Only ERROR goes to console; IMPORTANT/DEBUG → file only
     if (level === 'ERROR') {
       this.logger.error(message, JSON.stringify(context));
+    }
+  }
+
+  addLogStreamClient(response: Response): number {
+    const id = this.nextLogStreamClientId++;
+    response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    response.setHeader('Cache-Control', 'no-cache, no-transform');
+    response.setHeader('Connection', 'keep-alive');
+    response.setHeader('X-Accel-Buffering', 'no');
+    response.flushHeaders?.();
+    response.write('retry: 2000\n\n');
+    response.write(
+      `event: connected\ndata: ${JSON.stringify({ connected: true })}\n\n`,
+    );
+
+    const heartbeat = setInterval(() => {
+      response.write(`: ping ${new Date().toISOString()}\n\n`);
+    }, 25000);
+    this.logStreamClients.set(id, { response, heartbeat });
+    return id;
+  }
+
+  removeLogStreamClient(id: number) {
+    const client = this.logStreamClients.get(id);
+    if (!client) return;
+    clearInterval(client.heartbeat);
+    this.logStreamClients.delete(id);
+  }
+
+  private broadcastLogLine(line: string) {
+    const payload = JSON.stringify({
+      line,
+      received_at: new Date().toISOString(),
+    });
+    for (const client of this.logStreamClients.values()) {
+      client.response.write(`event: log\ndata: ${payload}\n\n`);
     }
   }
 

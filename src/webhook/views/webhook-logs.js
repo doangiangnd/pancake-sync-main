@@ -1,14 +1,15 @@
 (() => {
   const search = document.querySelector('#log-search');
   const filters = [...document.querySelectorAll('.filter')];
-  const entries = [...document.querySelectorAll('.log-entry')];
+  let entries = [...document.querySelectorAll('.log-entry')];
   const visibleCount = document.querySelector('#visible-count');
   const noResults = document.querySelector('#no-results');
-  const countdown = document.querySelector('#countdown');
   const refreshButton = document.querySelector('#refresh-button');
   const lineCount = document.querySelector('#line-count');
+  const liveState = document.querySelector('#live-state');
+  const streamStatus = document.querySelector('#stream-status');
   let activeFilter = 'all';
-  let seconds = 15;
+  let refreshTimer;
 
   const applyFilters = () => {
     const term = search.value.trim().toLowerCase();
@@ -42,9 +43,42 @@
     window.location.assign(url.toString());
   });
   refreshButton.addEventListener('click', () => window.location.reload());
-  window.setInterval(() => {
-    seconds -= 1;
-    countdown.textContent = String(seconds);
-    if (seconds <= 0) window.location.reload();
-  }, 1000);
+
+  const syncDashboard = async () => {
+    try {
+      const response = await fetch(window.location.href, { cache: 'no-store' });
+      if (!response.ok) return;
+      const nextDocument = new DOMParser().parseFromString(
+        await response.text(),
+        'text/html',
+      );
+      ['.capture-status', '.stats', '#log-list'].forEach((selector) => {
+        const current = document.querySelector(selector);
+        const next = nextDocument.querySelector(selector);
+        if (current && next) current.replaceWith(next);
+      });
+      entries = [...document.querySelectorAll('.log-entry')];
+      applyFilters();
+    } catch {
+      streamStatus.textContent = 'Chờ kết nối lại';
+    }
+  };
+
+  const scheduleSync = () => {
+    window.clearTimeout(refreshTimer);
+    refreshTimer = window.setTimeout(syncDashboard, 150);
+  };
+
+  const stream = new EventSource('/api/webhook/logs/stream');
+  stream.addEventListener('connected', () => {
+    liveState.classList.remove('offline');
+    liveState.querySelector('span').textContent = 'Realtime đang bật';
+    streamStatus.textContent = 'Đã kết nối';
+  });
+  stream.addEventListener('log', scheduleSync);
+  stream.onerror = () => {
+    liveState.classList.add('offline');
+    liveState.querySelector('span').textContent = 'Đang kết nối lại';
+    streamStatus.textContent = 'Mất kết nối tạm thời';
+  };
 })();
